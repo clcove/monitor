@@ -11,6 +11,7 @@ import oshi.software.os.OperatingSystem;
 import oshi.util.ExecutingCommand;
 import oshi.util.Util;
 
+import javax.xml.crypto.Data;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -41,18 +42,25 @@ public class InfoService
         InfoDto infoDto = new InfoDto();
         HardwareAbstractionLayer hardware = systemInfo.getHardware();
         //cpu信息
+        long l = System.currentTimeMillis();
+        System.out.println("cpu查询前:"+l);
         infoDto.setProcessor(getProcessor(hardware));
         //内存信息
+        System.out.println("内存查询前:"+System.currentTimeMillis());
         infoDto.setMachine(getMachine(hardware));
         //gpu信息
+        System.out.println("gpu查询前:"+System.currentTimeMillis());
         infoDto.setGraphics(getGraphics(hardware));
         //存储信息
+        System.out.println("存储查询前:"+System.currentTimeMillis());
         infoDto.setStorage(getStorage(hardware));
         //硬盘信息
+        System.out.println("硬盘查询前:"+System.currentTimeMillis());
         infoDto.setHardDisks(getHardDisk(hardware));
         //网络信息
+        System.out.println("网卡查询前:"+System.currentTimeMillis());
         infoDto.setNetworks(getNetwork(hardware));
-
+        System.out.println("全部查询结束:"+System.currentTimeMillis());
         return infoDto;
     }
 
@@ -242,7 +250,7 @@ public class InfoService
             //硬盘写入
             hardDiskDto.setWrite(getConvertedSize(hwDiskStore.getWrites()));
             //硬盘温度
-            hardDiskDto.setTemp(hwDiskStore.getPartitions().get(0).getName());
+            hardDiskDto.setTemp("35");
             hardDiskDtos.add(hardDiskDto);
         });
         return hardDiskDtos;
