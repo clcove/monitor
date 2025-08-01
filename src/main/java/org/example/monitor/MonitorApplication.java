@@ -8,6 +8,7 @@ public class MonitorApplication {
 
     public static void main(String[] args) {
         SpringApplication.run(MonitorApplication.class, args);
+        System.out.println("(♥◠‿◠)ﾉﾞ  监控面板 moni 启动   ლ(´ڡ`ლ)ﾞ  \n");
     }
 
 }
