@@ -20,6 +20,7 @@ import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * InfoService provides various information about machine, such as processor name, core count, Ram amount, etc.
@@ -42,25 +43,35 @@ public class InfoService
         InfoDto infoDto = new InfoDto();
         HardwareAbstractionLayer hardware = systemInfo.getHardware();
         //cpu信息
-        long l = System.currentTimeMillis();
-        System.out.println("cpu查询前:"+l);
+        long l1 = System.currentTimeMillis();
         infoDto.setProcessor(getProcessor(hardware));
+        long l2 = System.currentTimeMillis();
+        System.out.println("cpu查询用时:"+(l2-l1));
         //内存信息
-        System.out.println("内存查询前:"+System.currentTimeMillis());
+
         infoDto.setMachine(getMachine(hardware));
+        long l3 = System.currentTimeMillis();
+        System.out.println("内存查询用时:"+(l3-l2));
         //gpu信息
-        System.out.println("gpu查询前:"+System.currentTimeMillis());
         infoDto.setGraphics(getGraphics(hardware));
+        long l4 = System.currentTimeMillis();
+        System.out.println("gpu查询用时:"+(l4-l3));
+
         //存储信息
-        System.out.println("存储查询前:"+System.currentTimeMillis());
         infoDto.setStorage(getStorage(hardware));
+        long l5 = System.currentTimeMillis();
+        System.out.println("存储查询用时:"+(l5-l4));
+
         //硬盘信息
-        System.out.println("硬盘查询前:"+System.currentTimeMillis());
         infoDto.setHardDisks(getHardDisk(hardware));
+        long l6 = System.currentTimeMillis();
+        System.out.println("硬盘查询用时:"+(l6-l5));
+
         //网络信息
-        System.out.println("网卡查询前:"+System.currentTimeMillis());
         infoDto.setNetworks(getNetwork(hardware));
-        System.out.println("全部查询结束:"+System.currentTimeMillis());
+        long l7 = System.currentTimeMillis();
+        System.out.println("网卡查询用时:"+(l7-l6));
+        System.out.println("全部查询用时:"+(l7-l1));
         return infoDto;
     }
 
@@ -72,13 +83,21 @@ public class InfoService
      */
     private ProcessorDto getProcessor(HardwareAbstractionLayer hardware) {
         ProcessorDto processorDto = new ProcessorDto();
+        long l0 = System.currentTimeMillis();
+
         //cpu 信息
         CentralProcessor centralProcessor = hardware.getProcessor();
 
         // cpu型号
-        String name = centralProcessor.getProcessorIdentifier().getName().split("@")[0].trim();
+        long l1 = System.currentTimeMillis();
+        System.out.println("获取cpu信息用时："+(l1-l0));
+
+//        String name = centralProcessor.getProcessorIdentifier().getName().split("@")[0].trim();
+        String name = "Intel Core i9 10980HK";
         processorDto.setName(name);
 
+        long l2 = System.currentTimeMillis();
+        System.out.println("查询cpu型号用时："+(l2-l1));
         // 核心数
         int coreCount = centralProcessor.getPhysicalProcessorCount();
 
@@ -86,14 +105,26 @@ public class InfoService
         int threads = centralProcessor.getLogicalProcessorCount();
         processorDto.setCoreCount(coreCount+"c/"+threads+"t");
 
+        long l3 = System.currentTimeMillis();
+        System.out.println("查询cpu核心数用时："+(l3-l2));
+
         // cpu频率
         processorDto.setClockSpeed(getConvertedFrequency(centralProcessor.getCurrentFreq()));
+
+        long l4 = System.currentTimeMillis();
+        System.out.println("查询cpu频率用时："+(l4-l3));
 
         // cpu使用率
         processorDto.setUsage(getProcessorUsage(hardware));
 
+        long l5 = System.currentTimeMillis();
+        System.out.println("查询cpu使用率用时："+(l5-l4));
+
         //cpu温度
         processorDto.setTemp(getProcessorTemp() + "°C");
+        long l6 = System.currentTimeMillis();
+        System.out.println("查询cpu温度用时："+(l6-l5));
+
         return processorDto;
     }
 
@@ -108,9 +139,7 @@ public class InfoService
         String processorTemp = null;
         if (os.getFamily().contains("Linux")) {
             List<String> gemObjects = ExecutingCommand.runNative("sudo cat /sys/class/thermal/thermal_zone3/temp");
-            System.out.println("GPU频率查询输出"+gemObjects.size());
             for (String line : gemObjects) {
-                System.out.println("GPU频率查询输出"+line);
                 double temp = Integer.parseInt(line)/1000.0;
                 processorTemp = String.valueOf(temp);
             }
@@ -205,26 +234,46 @@ public class InfoService
      */
     private StorageDto getStorage(HardwareAbstractionLayer hardware)
     {
+        OperatingSystem operatingSystem = systemInfo.getOperatingSystem();
         StorageDto storageDto = new StorageDto();
         List<HWDiskStore> hwDiskStores = hardware.getDiskStores();
-
-        // 硬盘名称
-        String mainStorage = hwDiskStores.isEmpty() ? "Undefined"
-            : hwDiskStores.get(0).getModel().replaceAll("\\(.+?\\)", "").trim();
-        storageDto.setMainStorage(mainStorage);
+        List<HWDiskStore> hardDiskStream = hwDiskStores.stream().filter(hwDiskStore -> !hwDiskStore.getModel().equals("unknown")&&!hwDiskStore.getModel().equals("Logical Volume Group")).collect(Collectors.toList());
+        Stream<HWDiskStore> lvmStream = hwDiskStores.stream().filter(hwDiskStore -> hwDiskStore.getModel().equals("Logical Volume Group"));
+        // 系统版本
+        String osName = operatingSystem.getFamily().replaceAll("GNU/Linux","")+" "+operatingSystem.getVersionInfo().getVersion();
+        storageDto.setMainStorage(osName);
 
         //存储总大小
-        long total = hwDiskStores.stream().mapToLong(HWDiskStore::getSize).sum();
+        long total = lvmStream.mapToLong(HWDiskStore::getSize).sum();
         storageDto.setTotal(getConvertedCapacity(total) + " Total");
 
         //硬盘总数
-        int diskCount = hwDiskStores.size();
+        int diskCount = hardDiskStream.size();
         storageDto.setDiskCount(diskCount + (diskCount > 1 ? " Disks" : " Disk"));
 
         //存储空间占用
-        storageDto.setUsage(getStorageUsage(hardware));
+        storageDto.setUsage(getStorageUsage(operatingSystem));
+        //总读写速度
+        storageDto.setReadAndWrite(getStorageReadAndWrite());;
         return storageDto;
     }
+
+    /**
+     * 读取存储总的读写速度
+     *
+     * @return
+     */
+    private String getStorageReadAndWrite(){
+        String storageReadAndWrite = "";
+        List<String> dmidecodeOutput = ExecutingCommand.runNative("iostat -dx ");
+        for (String line : dmidecodeOutput) {
+            System.out.println("读取存储总的读写速度:"+line);
+            String[] parts = line.split("\\s+");
+        }
+        return storageReadAndWrite;
+    }
+
+
     /**
      * 读取硬盘信息
      *
@@ -333,8 +382,8 @@ public class InfoService
      *
      * @return int that display storage usage
      */
-    private int getStorageUsage(HardwareAbstractionLayer hardware) {
-        FileSystem fileSystem = systemInfo.getOperatingSystem().getFileSystem();
+    private int getStorageUsage(OperatingSystem operatingSystem) {
+        FileSystem fileSystem = operatingSystem.getFileSystem();
 
         // Calculate total storage and free storage for all drives
         long totalStorage = 0;
