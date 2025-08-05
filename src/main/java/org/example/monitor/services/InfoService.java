@@ -299,15 +299,13 @@ public class InfoService
     /**
      * 读取硬盘温度
      */
-    private Map<String, String> getHardDiskTemp() {
-        Map<String, String> hardDiskTemp = new HashMap<>();
-        List<String> dmidecodeOutput = ExecutingCommand.runNative("sudo smartctl -A /dev/sda | grep -i temperature");
-        for (int i = 0; i < dmidecodeOutput.size(); i++) {
-            String line = dmidecodeOutput.get(i);
-            String[] parts = line.split("\\s+");
-            hardDiskTemp.put(parts[0], parts[1]);
-        }
-        return hardDiskTemp;
+    private String getHardDiskTemp(String diskName) {
+        String hardDiskTemp = "";
+        List<String> dmidecodeOutput = ExecutingCommand.runNative("sudo smartctl -A "+ diskName +" | grep -i temperature");
+        String line = dmidecodeOutput.get(0);
+        String[] parts = line.split("\\s+");
+        hardDiskTemp = parts[3];
+        return hardDiskTemp+"℃";
     }
 
     /**
@@ -321,8 +319,7 @@ public class InfoService
         List<HWDiskStore> hwDiskStores = hardware.getDiskStores();
         //硬盘读写速率
         Map<String, Map<String, String>> hardDiskIostats = getHardDiskIostat();
-        //硬盘温度
-        Map<String, String> hardDiskTemp = getHardDiskTemp();
+
         hwDiskStores.forEach(hwDiskStore -> {
             Map<String, String> hardDiskIostat = hardDiskIostats.get(hwDiskStore.getName());
             HardDiskDto hardDiskDto = new HardDiskDto();
@@ -341,7 +338,7 @@ public class InfoService
             //硬盘繁忙率
             hardDiskDto.setUsage(hardDiskIostat.get("util")+"%");
             //硬盘温度
-            hardDiskDto.setTemp(hardDiskTemp.get(hwDiskStore.getName()));
+            hardDiskDto.setTemp(getHardDiskTemp(hwDiskStore.getName()));
             hardDiskDtos.add(hardDiskDto);
         });
         return hardDiskDtos;
