@@ -13,10 +13,7 @@ import oshi.util.Util;
 
 import javax.xml.crypto.Data;
 import java.text.DecimalFormat;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -263,16 +260,55 @@ public class InfoService
      *
      * @return
      */
-    private String getStorageReadAndWrite(){
-        String storageReadAndWrite = "";
-        List<String> dmidecodeOutput = ExecutingCommand.runNative("iostat -dx ");
-        for (String line : dmidecodeOutput) {
-            System.out.println("读取存储总的读写速度:"+line);
-            String[] parts = line.split("\\s+");
-        }
-        return storageReadAndWrite;
+    private String getStorageReadAndWrite() {
+        // 使用 double[] 来绕过 Lambda 表达式的限制
+        double[] totalWrite = {0.0};
+        double[] totalRead = {0.0};
+
+        Map<String, Map<String, String>> hardDiskIostats = getHardDiskIostat();
+
+        hardDiskIostats.forEach((diskName, iostat) -> {
+            if (diskName.contains("dm-")) {
+                totalWrite[0] += Double.parseDouble(iostat.get("write"));
+                totalRead[0] += Double.parseDouble(iostat.get("read"));
+            }
+        });
+
+        // 返回读写数据（可以按需求格式化）
+        return  totalRead[0] + "kB/s|" + totalWrite[0] + "kB/s";
     }
 
+    /**
+     * 读取硬盘读取速率
+     */
+    private Map<String,Map<String, String>> getHardDiskIostat() {
+        Map<String,Map<String, String>> hardDiskIostat = new HashMap<>();
+        List<String> dmidecodeOutput = ExecutingCommand.runNative("iostat -dx ");
+        for (int i = 2; i < dmidecodeOutput.size(); i++) {
+            Map<String, String> iostat = new HashMap<>();
+            String line = dmidecodeOutput.get(i);
+            String[] parts = line.split("\\s+");
+            iostat.put("read", parts[2]);
+            iostat.put("write", parts[9]);
+            iostat.put("util", parts[22]);
+            hardDiskIostat.put(parts[0], iostat);
+        }
+        return hardDiskIostat;
+    }
+
+    /**
+     * 读取硬盘温度
+     */
+    private Map<String, String> getHardDiskTemp() {
+        Map<String, String> hardDiskTemp = new HashMap<>();
+        List<String> dmidecodeOutput = ExecutingCommand.runNative("sudo smartctl -A /dev/sda | grep -i temperature");
+        for (int i = 0; i < dmidecodeOutput.size(); i++) {
+            String line = dmidecodeOutput.get(i);
+            String[] parts = line.split("\\s+");
+            hardDiskTemp.put(parts[0], parts[1]);
+        }
+        return hardDiskTemp;
+    }
 
     /**
      * 读取硬盘信息
@@ -283,8 +319,12 @@ public class InfoService
     {
         List<HardDiskDto> hardDiskDtos = new ArrayList<>();
         List<HWDiskStore> hwDiskStores = hardware.getDiskStores();
-
+        //硬盘读写速率
+        Map<String, Map<String, String>> hardDiskIostats = getHardDiskIostat();
+        //硬盘温度
+        Map<String, String> hardDiskTemp = getHardDiskTemp();
         hwDiskStores.forEach(hwDiskStore -> {
+            Map<String, String> hardDiskIostat = hardDiskIostats.get(hwDiskStore.getName());
             HardDiskDto hardDiskDto = new HardDiskDto();
             //硬盘名称
             hardDiskDto.setName(hwDiskStore.getName());
@@ -295,11 +335,13 @@ public class InfoService
             //硬盘总大小
             hardDiskDto.setTotal(getConvertedCapacity(hwDiskStore.getSize()));
             //硬盘读取
-            hardDiskDto.setRead(getConvertedSize(hwDiskStore.getReads()));
+            hardDiskDto.setRead(hardDiskIostat.get("read")+"kB/s");
             //硬盘写入
-            hardDiskDto.setWrite(getConvertedSize(hwDiskStore.getWrites()));
+            hardDiskDto.setWrite(hardDiskIostat.get("write")+"kB/s");
+            //硬盘繁忙率
+            hardDiskDto.setUsage(hardDiskIostat.get("util")+"%");
             //硬盘温度
-            hardDiskDto.setTemp("35");
+            hardDiskDto.setTemp(hardDiskTemp.get(hwDiskStore.getName()));
             hardDiskDtos.add(hardDiskDto);
         });
         return hardDiskDtos;

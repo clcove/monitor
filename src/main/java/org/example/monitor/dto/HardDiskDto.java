@@ -34,9 +34,9 @@ public class HardDiskDto
     private String total;
 
     /**
-     * 硬盘占用率
+     * 硬盘繁忙率
      */
-    private int usage;
+    private String usage;
 
     /**
      * 硬盘读取
