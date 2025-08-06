@@ -33,8 +33,7 @@ public class InfoController
      * @return ResponseEntity to servlet
      */
     @GetMapping
-    public ResponseEntity<InfoDto> getInfo()
-    {
+    public ResponseEntity<InfoDto> getInfo() throws Exception {
         return new ResponseEntity<>(infoService.getInfo(), HttpStatus.OK);
     }
 }

@@ -12,6 +12,8 @@ import oshi.util.ExecutingCommand;
 import oshi.util.Util;
 
 import javax.xml.crypto.Data;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
 import java.text.DecimalFormat;
 import java.util.*;
 import java.util.regex.Matcher;
@@ -35,40 +37,39 @@ public class InfoService
      *
      * @return InfoDto filled with server info
      */
-    public InfoDto getInfo()
-    {
+    public InfoDto getInfo() throws Exception {
         InfoDto infoDto = new InfoDto();
         HardwareAbstractionLayer hardware = systemInfo.getHardware();
         //cpu信息
         long l1 = System.currentTimeMillis();
         infoDto.setProcessor(getProcessor(hardware));
         long l2 = System.currentTimeMillis();
-        System.out.println("cpu查询用时:"+(l2-l1));
+//        System.out.println("cpu查询用时:"+(l2-l1));
         //内存信息
 
         infoDto.setMachine(getMachine(hardware));
         long l3 = System.currentTimeMillis();
-        System.out.println("内存查询用时:"+(l3-l2));
+//        System.out.println("内存查询用时:"+(l3-l2));
         //gpu信息
         infoDto.setGraphics(getGraphics(hardware));
         long l4 = System.currentTimeMillis();
-        System.out.println("gpu查询用时:"+(l4-l3));
-
+//        System.out.println("gpu查询用时:"+(l4-l3));
+        Map<String, Map<String, String>> hardDiskIostats = getHardDiskIostat();
         //存储信息
-        infoDto.setStorage(getStorage(hardware));
+        infoDto.setStorage(getStorage(hardware, hardDiskIostats));
         long l5 = System.currentTimeMillis();
-        System.out.println("存储查询用时:"+(l5-l4));
+//        System.out.println("存储查询用时:"+(l5-l4));
 
         //硬盘信息
-        infoDto.setHardDisks(getHardDisk(hardware));
+        infoDto.setHardDisks(getHardDisk(hardware, hardDiskIostats));
         long l6 = System.currentTimeMillis();
-        System.out.println("硬盘查询用时:"+(l6-l5));
+//        System.out.println("硬盘查询用时:"+(l6-l5));
 
         //网络信息
         infoDto.setNetworks(getNetwork(hardware));
         long l7 = System.currentTimeMillis();
-        System.out.println("网卡查询用时:"+(l7-l6));
-        System.out.println("全部查询用时:"+(l7-l1));
+//        System.out.println("网卡查询用时:"+(l7-l6));
+//        System.out.println("全部查询用时:"+(l7-l1));
         return infoDto;
     }
 
@@ -87,14 +88,14 @@ public class InfoService
 
         // cpu型号
         long l1 = System.currentTimeMillis();
-        System.out.println("获取cpu信息用时："+(l1-l0));
+//        System.out.println("获取cpu信息用时："+(l1-l0));
 
 //        String name = centralProcessor.getProcessorIdentifier().getName().split("@")[0].trim();
         String name = "Intel Core i9 10980HK";
         processorDto.setName(name);
 
         long l2 = System.currentTimeMillis();
-        System.out.println("查询cpu型号用时："+(l2-l1));
+//        System.out.println("查询cpu型号用时："+(l2-l1));
         // 核心数
         int coreCount = centralProcessor.getPhysicalProcessorCount();
 
@@ -103,24 +104,24 @@ public class InfoService
         processorDto.setCoreCount(coreCount+"c/"+threads+"t");
 
         long l3 = System.currentTimeMillis();
-        System.out.println("查询cpu核心数用时："+(l3-l2));
+//        System.out.println("查询cpu核心数用时："+(l3-l2));
 
         // cpu频率
         processorDto.setClockSpeed(getConvertedFrequency(centralProcessor.getCurrentFreq()));
 
         long l4 = System.currentTimeMillis();
-        System.out.println("查询cpu频率用时："+(l4-l3));
+//        System.out.println("查询cpu频率用时："+(l4-l3));
 
         // cpu使用率
         processorDto.setUsage(getProcessorUsage(hardware));
 
         long l5 = System.currentTimeMillis();
-        System.out.println("查询cpu使用率用时："+(l5-l4));
+//        System.out.println("查询cpu使用率用时："+(l5-l4));
 
         //cpu温度
         processorDto.setTemp(getProcessorTemp() + "°C");
         long l6 = System.currentTimeMillis();
-        System.out.println("查询cpu温度用时："+(l6-l5));
+//        System.out.println("查询cpu温度用时："+(l6-l5));
 
         return processorDto;
     }
@@ -229,7 +230,7 @@ public class InfoService
      *
      * @return GraphicsDto with filled fields
      */
-    private StorageDto getStorage(HardwareAbstractionLayer hardware)
+    private StorageDto getStorage(HardwareAbstractionLayer hardware, Map<String, Map<String, String>> hardDiskIostats)
     {
         OperatingSystem operatingSystem = systemInfo.getOperatingSystem();
         StorageDto storageDto = new StorageDto();
@@ -242,7 +243,7 @@ public class InfoService
 
         //存储总大小
         long total = lvmStream.mapToLong(HWDiskStore::getSize).sum();
-        storageDto.setTotal(getConvertedCapacity(total) + " Total");
+        storageDto.setTotal(getConvertedCapacity(total));
 
         //硬盘总数
         int diskCount = hardDiskStream.size();
@@ -251,7 +252,7 @@ public class InfoService
         //存储空间占用
         storageDto.setUsage(getStorageUsage(operatingSystem));
         //总读写速度
-        storageDto.setReadAndWrite(getStorageReadAndWrite());;
+        storageDto.setReadAndWrite(getStorageReadAndWrite(hardDiskIostats));
         return storageDto;
     }
 
@@ -260,38 +261,65 @@ public class InfoService
      *
      * @return
      */
-    private String getStorageReadAndWrite() {
+    private String getStorageReadAndWrite(Map<String, Map<String, String>> hardDiskIostats) {
         // 使用 double[] 来绕过 Lambda 表达式的限制
         double[] totalWrite = {0.0};
         double[] totalRead = {0.0};
-
-        Map<String, Map<String, String>> hardDiskIostats = getHardDiskIostat();
-
         hardDiskIostats.forEach((diskName, iostat) -> {
             if (diskName.contains("dm-")) {
+                System.out.println("总读写计算"+diskName+"   "+iostat.get("read")+"    "+iostat.get("write"));
                 totalWrite[0] += Double.parseDouble(iostat.get("write"));
                 totalRead[0] += Double.parseDouble(iostat.get("read"));
             }
         });
 
         // 返回读写数据（可以按需求格式化）
-        return  totalRead[0] + "kB/s|" + totalWrite[0] + "kB/s";
+        return  getConvertedSizekb(totalRead[0]) + "/s|" + getConvertedSizekb(totalWrite[0]) + "/s";
     }
 
     /**
      * 读取硬盘读取速率
      */
-    private Map<String,Map<String, String>> getHardDiskIostat() {
+    private Map<String,Map<String, String>> getHardDiskIostat() throws Exception{
         Map<String,Map<String, String>> hardDiskIostat = new HashMap<>();
-        List<String> dmidecodeOutput = ExecutingCommand.runNative("iostat -dx ");
-        for (int i = 2; i < dmidecodeOutput.size(); i++) {
-            Map<String, String> iostat = new HashMap<>();
-            String line = dmidecodeOutput.get(i);
-            String[] parts = line.split("\\s+");
-            iostat.put("read", parts[2]);
-            iostat.put("write", parts[9]);
-            iostat.put("util", parts[22]);
-            hardDiskIostat.put(parts[0], iostat);
+//        List<String> dmidecodeOutput = ExecutingCommand.runNative("iostat -dx ");
+//        for (int i = 2; i < dmidecodeOutput.size(); i++) {
+//            Map<String, String> iostat = new HashMap<>();
+//            String line = dmidecodeOutput.get(i);
+//            String[] parts = line.split("\\s+");
+//            iostat.put("read", parts[2]);
+//            iostat.put("write", parts[9]);
+//            iostat.put("util", parts[22]);
+//            hardDiskIostat.put(parts[0], iostat);
+//        }
+        ProcessBuilder pb = new ProcessBuilder("iostat", "-dx", "1", "2");
+        Process p = pb.start();
+
+        // 读取输出
+        List<String> lines = new ArrayList<>();
+        try (BufferedReader br = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
+            String line;
+            while ((line = br.readLine()) != null) {
+                lines.add(line);
+            }
+        }
+
+        // 解析最后一部分数据（跳过首次统计）
+        boolean startParsing = false;
+        for (String line : lines) {
+            if (line.startsWith("Device")) {
+                startParsing = true;
+                continue;
+            }
+            if (startParsing && !line.trim().isEmpty()) {
+                System.out.println("读取硬盘速度"+line.trim());
+                Map<String, String> iostat = new HashMap<>();
+                String[] parts = line.trim().split("\\s+");
+                iostat.put("read", parts[2]);
+                iostat.put("write", parts[9]);
+                iostat.put("util", parts[22]);
+                hardDiskIostat.put(parts[0], iostat);
+            }
         }
         return hardDiskIostat;
     }
@@ -301,10 +329,25 @@ public class InfoService
      */
     private String getHardDiskTemp(String diskName) {
         String hardDiskTemp = "";
-        List<String> dmidecodeOutput = ExecutingCommand.runNative("sudo smartctl -A "+ diskName +" | grep -i temperature");
-        String line = dmidecodeOutput.get(0);
-        String[] parts = line.split("\\s+");
-        hardDiskTemp = parts[3];
+        String cmdToRun = "sudo smartctl -A "+ diskName;
+        List<String> smartctlOutput = ExecutingCommand.runNative(cmdToRun);
+        // 在Java中过滤结果
+        List<String> temperatureLines = smartctlOutput.stream()
+                .filter(line -> line.toLowerCase().contains("temperature"))
+                .collect(Collectors.toList());
+        if (temperatureLines.size() == 1) {
+            String line = temperatureLines.get(0);
+            String[] parts = line.split("\\s+");
+            hardDiskTemp = parts[9];
+        }else if (temperatureLines.size() == 2) {
+            String line = temperatureLines.get(0);
+            String[] parts = line.split("\\s+");
+            hardDiskTemp = parts[3];
+        }else if (temperatureLines.size() == 5) {
+            String line = temperatureLines.get(0);
+            String[] parts = line.split("\\s+");
+            hardDiskTemp = parts[1];
+        }
         return hardDiskTemp+"℃";
     }
 
@@ -313,15 +356,15 @@ public class InfoService
      *
      * @return GraphicsDto with filled fields
      */
-    private List<HardDiskDto> getHardDisk(HardwareAbstractionLayer hardware)
+    private List<HardDiskDto> getHardDisk(HardwareAbstractionLayer hardware, Map<String, Map<String, String>> hardDiskIostats)
     {
         List<HardDiskDto> hardDiskDtos = new ArrayList<>();
         List<HWDiskStore> hwDiskStores = hardware.getDiskStores();
-        //硬盘读写速率
-        Map<String, Map<String, String>> hardDiskIostats = getHardDiskIostat();
+        List<HWDiskStore> hardDiskStream = hwDiskStores.stream().filter(hwDiskStore -> !hwDiskStore.getModel().equals("unknown")&&!hwDiskStore.getModel().equals("Logical Volume Group")).collect(Collectors.toList());
 
-        hwDiskStores.forEach(hwDiskStore -> {
-            Map<String, String> hardDiskIostat = hardDiskIostats.get(hwDiskStore.getName());
+
+        hardDiskStream.forEach(hwDiskStore -> {
+            Map<String, String> hardDiskIostat = hardDiskIostats.get(hwDiskStore.getName().replaceAll("/dev/",""));
             HardDiskDto hardDiskDto = new HardDiskDto();
             //硬盘名称
             hardDiskDto.setName(hwDiskStore.getName());
@@ -332,9 +375,9 @@ public class InfoService
             //硬盘总大小
             hardDiskDto.setTotal(getConvertedCapacity(hwDiskStore.getSize()));
             //硬盘读取
-            hardDiskDto.setRead(hardDiskIostat.get("read")+"kB/s");
+            hardDiskDto.setRead(getConvertedSizekb(Double.parseDouble(hardDiskIostat.get("read")))+"/s");
             //硬盘写入
-            hardDiskDto.setWrite(hardDiskIostat.get("write")+"kB/s");
+            hardDiskDto.setWrite(getConvertedSizekb(Double.parseDouble(hardDiskIostat.get("write")))+"/s");
             //硬盘繁忙率
             hardDiskDto.setUsage(hardDiskIostat.get("util")+"%");
             //硬盘温度
@@ -663,6 +706,46 @@ public class InfoService
         } else {
             // PB 级别及以上
             double value = Math.ceil((bytes / PB) * 10.0) / 10.0; // 保留一位小数向上取整
+            return df.format(value) + " PB";
+        }
+    }
+
+    /**
+     * 将kb数转换为最易读的格式
+     *
+     * @param kbnum raw byte value
+     * @return String with formatted size and postfix (e.g., "1.5 KB", "2.3 GB")
+     */
+    private String getConvertedSizekb (double kbnum) {
+        DecimalFormat df = new DecimalFormat("#.##"); // 最多保留两位小数，并去掉末尾的0
+        df.setDecimalSeparatorAlwaysShown(false); // 不显示多余的小数点
+
+        // 定义字节单位的阈值 (基于 1024)
+        final double MB =  1024.0; // 1,048,576
+        final double GB = MB * 1024.0; // 1,073,741,824
+        final double TB = GB * 1024.0; // 1,099,511,627,776
+        final double PB = TB * 1024.0; // 1,125,899,906,842,624
+
+        // 根据字节数大小选择合适的单位
+        if (kbnum < MB) {
+            // KB 级别
+
+            return df.format(kbnum) + " KB";
+        } else if (kbnum < GB) {
+            // MB 级别
+            double value = Math.ceil((kbnum / MB) * 10.0) / 10.0; // 保留一位小数向上取整
+            return df.format(value) + " MB";
+        } else if (kbnum < TB) {
+            // GB 级别
+            double value = Math.ceil((kbnum / GB) * 10.0) / 10.0; // 保留一位小数向上取整
+            return df.format(value) + " GB";
+        } else if (kbnum < PB) {
+            // TB 级别
+            double value = Math.ceil((kbnum / TB) * 10.0) / 10.0; // 保留一位小数向上取整
+            return df.format(value) + " TB";
+        } else {
+            // PB 级别及以上
+            double value = Math.ceil((kbnum / PB) * 10.0) / 10.0; // 保留一位小数向上取整
             return df.format(value) + " PB";
         }
     }
