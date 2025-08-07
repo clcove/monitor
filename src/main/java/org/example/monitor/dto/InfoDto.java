@@ -43,5 +43,5 @@ public class InfoDto
     /**
      *  网络信息 dto 字段
      */
-    private List<NetworkDto> networks;
+    private NetworkDto network;
 }

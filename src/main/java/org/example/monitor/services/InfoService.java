@@ -54,7 +54,12 @@ public class InfoService
         infoDto.setGraphics(getGraphics(hardware));
         long l4 = System.currentTimeMillis();
 //        System.out.println("gpu查询用时:"+(l4-l3));
-        Map<String, Map<String, String>> hardDiskIostats = getHardDiskIostat();
+        Map<String, Map<String, String>> hardDiskIostats;
+        if (GlobalCache.contains("hardDiskIostat")){
+            hardDiskIostats = (Map<String, Map<String, String>>) GlobalCache.get("hardDiskIostat");
+        }else {
+            hardDiskIostats = getHardDiskIostat();
+        }
         //存储信息
         infoDto.setStorage(getStorage(hardware, hardDiskIostats));
         long l5 = System.currentTimeMillis();
@@ -66,7 +71,7 @@ public class InfoService
 //        System.out.println("硬盘查询用时:"+(l6-l5));
 
         //网络信息
-        infoDto.setNetworks(getNetwork(hardware));
+        infoDto.setNetwork(getNetwork(hardware));
         long l7 = System.currentTimeMillis();
 //        System.out.println("网卡查询用时:"+(l7-l6));
 //        System.out.println("全部查询用时:"+(l7-l1));
@@ -111,9 +116,12 @@ public class InfoService
 
         long l4 = System.currentTimeMillis();
 //        System.out.println("查询cpu频率用时："+(l4-l3));
-
         // cpu使用率
-        processorDto.setUsage(getProcessorUsage(hardware));
+        if (GlobalCache.contains("cpuUsage")){
+            processorDto.setUsage((Integer) GlobalCache.get("cpuUsage"));
+        }else {
+            processorDto.setUsage(getProcessorUsage(hardware));
+        }
 
         long l5 = System.currentTimeMillis();
 //        System.out.println("查询cpu使用率用时："+(l5-l4));
@@ -391,23 +399,24 @@ public class InfoService
      *
      * @return GraphicsDto with filled fields
      */
-    private List<NetworkDto> getNetwork(HardwareAbstractionLayer hardware)
+    private NetworkDto getNetwork(HardwareAbstractionLayer hardware)
     {
-        List<NetworkDto> networkDtos = new ArrayList<>();
-        List<NetworkIF> networkIFs = hardware.getNetworkIFs();
+        NetworkDto networkDto = new NetworkDto();
 
-        networkIFs.forEach(networkIF -> {
-            NetworkDto networkDto = new NetworkDto();
-            networkDto.setName(networkIF.getName());
-            networkDto.setDisplayName(networkIF.getDisplayName());
-            networkDto.setMacaddr(networkIF.getMacaddr());
-            networkDto.setIPv4addr(networkIF.getIPv4addr());
-            networkDto.setIPv6addr(networkIF.getIPv6addr());
-            networkDto.setDownload(getConvertedSize(networkIF.getBytesRecv()));
-            networkDto.setUpload(getConvertedSize(networkIF.getBytesSent()));
-            networkDtos.add(networkDto);
-        });
-        return networkDtos;
+        List<NetworkIF> networkIFs = hardware.getNetworkIFs();
+        List<NetworkIF> networkIF = networkIFs.stream()
+                .filter(net -> net.getName().equals("wireless_32768")).collect(Collectors.toList());
+        NetworkIF eth0 = networkIF.get(0);
+        networkDto.setName(eth0.getName());
+        networkDto.setDisplayName(eth0.getDisplayName());
+        networkDto.setMacaddr(eth0.getMacaddr());
+        networkDto.setIPv4addr(eth0.getIPv4addr());
+        networkDto.setIPv6addr(eth0.getIPv6addr());
+        if (GlobalCache.contains("downloadRate")){
+            networkDto.setDownload(getConvertedSize((Long) GlobalCache.get("downloadRate")));
+            networkDto.setUpload(getConvertedSize((Long) GlobalCache.get("uploadRate")));
+        }
+        return networkDto;
     }
 
 
