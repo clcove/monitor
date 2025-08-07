@@ -44,16 +44,16 @@ public class InfoService
         long l1 = System.currentTimeMillis();
         infoDto.setProcessor(getProcessor(hardware));
         long l2 = System.currentTimeMillis();
-//        System.out.println("cpu查询用时:"+(l2-l1));
+        System.out.println("cpu查询用时:"+(l2-l1));
         //内存信息
 
         infoDto.setMachine(getMachine(hardware));
         long l3 = System.currentTimeMillis();
-//        System.out.println("内存查询用时:"+(l3-l2));
+        System.out.println("内存查询用时:"+(l3-l2));
         //gpu信息
         infoDto.setGraphics(getGraphics(hardware));
         long l4 = System.currentTimeMillis();
-//        System.out.println("gpu查询用时:"+(l4-l3));
+        System.out.println("gpu查询用时:"+(l4-l3));
         Map<String, Map<String, String>> hardDiskIostats;
         if (GlobalCache.contains("hardDiskIostat")){
             hardDiskIostats = (Map<String, Map<String, String>>) GlobalCache.get("hardDiskIostat");
@@ -63,18 +63,18 @@ public class InfoService
         //存储信息
         infoDto.setStorage(getStorage(hardware, hardDiskIostats));
         long l5 = System.currentTimeMillis();
-//        System.out.println("存储查询用时:"+(l5-l4));
+        System.out.println("存储查询用时:"+(l5-l4));
 
         //硬盘信息
         infoDto.setHardDisks(getHardDisk(hardware, hardDiskIostats));
         long l6 = System.currentTimeMillis();
-//        System.out.println("硬盘查询用时:"+(l6-l5));
+        System.out.println("硬盘查询用时:"+(l6-l5));
 
         //网络信息
         infoDto.setNetwork(getNetwork(hardware));
         long l7 = System.currentTimeMillis();
-//        System.out.println("网卡查询用时:"+(l7-l6));
-//        System.out.println("全部查询用时:"+(l7-l1));
+        System.out.println("网卡查询用时:"+(l7-l6));
+        System.out.println("全部查询用时:"+(l7-l1));
         return infoDto;
     }
 
@@ -212,8 +212,11 @@ public class InfoService
         graphicsDto.setMemoryUsage(getConvertedCapacity(getGraphicsMemoryUsage()));
 
         //gpu占用
-        graphicsDto.setUsage(getGraphicsUsage());
-
+        if (GlobalCache.contains("gpuUsage")){
+            graphicsDto.setUsage((Integer) GlobalCache.get("gpuUsage"));
+        }else {
+            graphicsDto.setUsage(getGraphicsUsage());
+        }
         //gpu频率
         graphicsDto.setClockSpeed(getGpuDetailsFrequency());
         return graphicsDto;
@@ -275,7 +278,7 @@ public class InfoService
         double[] totalRead = {0.0};
         hardDiskIostats.forEach((diskName, iostat) -> {
             if (diskName.contains("dm-")) {
-                System.out.println("总读写计算"+diskName+"   "+iostat.get("read")+"    "+iostat.get("write"));
+//                System.out.println("总读写计算"+diskName+"   "+iostat.get("read")+"    "+iostat.get("write"));
                 totalWrite[0] += Double.parseDouble(iostat.get("write"));
                 totalRead[0] += Double.parseDouble(iostat.get("read"));
             }
@@ -320,7 +323,7 @@ public class InfoService
                 continue;
             }
             if (startParsing && !line.trim().isEmpty()) {
-                System.out.println("读取硬盘速度"+line.trim());
+//                System.out.println("读取硬盘速度"+line.trim());
                 Map<String, String> iostat = new HashMap<>();
                 String[] parts = line.trim().split("\\s+");
                 iostat.put("read", parts[2]);
@@ -389,7 +392,8 @@ public class InfoService
             //硬盘繁忙率
             hardDiskDto.setUsage(hardDiskIostat.get("util")+"%");
             //硬盘温度
-            hardDiskDto.setTemp(getHardDiskTemp(hwDiskStore.getName()));
+//            hardDiskDto.setTemp(getHardDiskTemp(hwDiskStore.getName()));
+            hardDiskDto.setTemp("20");
             hardDiskDtos.add(hardDiskDto);
         });
         return hardDiskDtos;
@@ -405,7 +409,7 @@ public class InfoService
 
         List<NetworkIF> networkIFs = hardware.getNetworkIFs();
         List<NetworkIF> networkIF = networkIFs.stream()
-                .filter(net -> net.getName().equals("wireless_32768")).collect(Collectors.toList());
+                .filter(net -> net.getName().contains("eno1")).collect(Collectors.toList());
         NetworkIF eth0 = networkIF.get(0);
         networkDto.setName(eth0.getName());
         networkDto.setDisplayName(eth0.getDisplayName());
@@ -595,10 +599,10 @@ public class InfoService
     private int getGraphicsUsage(){
         SystemInfo si = new SystemInfo();
         OperatingSystem os = si.getOperatingSystem();
-        int ramFrequency = 10;
+        int ramFrequency = 0;
         if (os.getFamily().contains("Linux")) {
             // 方法1:
-            List<String> gemObjects = ExecutingCommand.runNative("sudo timeout 0.05 intel_gpu_top -l -s 1");
+            List<String> gemObjects = ExecutingCommand.runNative("sudo timeout 1 intel_gpu_top -l -s 1");
             for (String line : gemObjects) {
 //                System.out.println("GPU占用查询输出"+line);
                 if (!line.contains("Freq")&& !line.contains("req")) {

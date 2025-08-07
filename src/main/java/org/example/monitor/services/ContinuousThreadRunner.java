@@ -6,6 +6,8 @@ import oshi.SystemInfo;
 import oshi.hardware.CentralProcessor;
 import oshi.hardware.HardwareAbstractionLayer;
 import oshi.hardware.NetworkIF;
+import oshi.software.os.OperatingSystem;
+import oshi.util.ExecutingCommand;
 import oshi.util.Util;
 
 import java.io.BufferedReader;
@@ -13,6 +15,8 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @Component
@@ -22,6 +26,8 @@ public class ContinuousThreadRunner implements CommandLineRunner {
 
     @Override
     public void run(String... args) {
+        SystemInfo si = new SystemInfo();
+        OperatingSystem os = si.getOperatingSystem();
         Thread continuousThread = new Thread(() -> {
             while (running) {
                 try {
@@ -74,7 +80,7 @@ public class ContinuousThreadRunner implements CommandLineRunner {
                             continue;
                         }
                         if (startParsing && !line.trim().isEmpty()) {
-                            System.out.println("读取硬盘速度"+line.trim());
+//                            System.out.println("读取硬盘速度"+line.trim());
                             Map<String, String> iostat = new HashMap<>();
                             String[] parts = line.trim().split("\\s+");
                             iostat.put("read", parts[2]);
@@ -88,7 +94,7 @@ public class ContinuousThreadRunner implements CommandLineRunner {
                     // 获取所有网络接口
                     List<NetworkIF> networkIFs = systemInfo.getHardware().getNetworkIFs();
                     List<NetworkIF> networkIF = networkIFs.stream()
-                            .filter(net -> net.getName().equals("wireless_32768")).collect(Collectors.toList());
+                            .filter(net -> net.getName().contains("eno1")).collect(Collectors.toList());
                     NetworkIF eth0 = networkIF.get(0);
                     // 第一次采样（获取初始数据）
                     eth0.updateAttributes();
@@ -110,6 +116,39 @@ public class ContinuousThreadRunner implements CommandLineRunner {
                     long uploadRate = bytesSentAfter - bytesSentBefore;
                     GlobalCache.put("uploadRate", uploadRate);
                     GlobalCache.put("downloadRate", downloadRate);
+                    //gpu占用
+                    int ramFrequency = 0;
+                    if (os.getFamily().contains("Linux")) {
+                        // 方法1:
+                        List<String> gemObjects = ExecutingCommand.runNative("sudo timeout 1 intel_gpu_top -l -s 1");
+                        for (String line : gemObjects) {
+//                System.out.println("GPU占用查询输出"+line);
+                            if (!line.contains("Freq")&& !line.contains("req")) {
+                                // 1. 提取所有两位小数
+                                List<Double> decimals = new ArrayList<>();
+                                Matcher matcher = Pattern.compile("\\d+\\.\\d{2}").matcher(line);
+                                while (matcher.find()) {
+                                    decimals.add(Double.parseDouble(matcher.group()));
+                                }
+
+                                // 2. 取最后4个并四舍五入
+                                List<Integer> rounded = decimals.stream()
+                                        .skip(Math.max(0, decimals.size() - 4))
+                                        .map(d -> (int) Math.round(d))
+                                        .collect(Collectors.toList());
+
+                                // 3. 找出最大值
+                                ramFrequency = rounded.stream().max(Integer::compare).orElse(0);
+                            }
+                        }
+
+                    } else if (os.getFamily().contains("Windows")) {
+                        // Windows系统实现
+                        System.out.println("读取GPU占用:不支持的操作系统"+os.getFamily());
+                    } else {
+                        System.out.println("读取GPU占用:不支持的操作系统"+os.getFamily());
+                    }
+                    GlobalCache.put("gpuUsage", ramFrequency);
                     // 控制执行频率
                     Thread.sleep(1000);
                 } catch (InterruptedException | IOException e) {
